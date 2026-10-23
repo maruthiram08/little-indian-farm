@@ -9,6 +9,7 @@ import {
   collectPress,
   dismissOrder,
   fulfill,
+  basketFull,
   harvest,
   hireHorse,
   isCropUnlocked,
@@ -18,6 +19,7 @@ import {
   orderProgress,
   plant,
   rideLeft,
+  sellSurplus,
   startPress,
   tick,
 } from './game/sim';
@@ -160,6 +162,7 @@ let holdDone = false;
 let haatCooldown = 0;
 let horseHold = 0;
 let lastHarvested = -1;
+let warnedFull = false;
 let warnedHorse = false;
 let wasRiding = false;
 let warnedSeed = false;
@@ -219,7 +222,12 @@ function interact(dt: number, now: number, moving: boolean): void {
       }
     } else if (isRipe(p, now)) {
       const crop = p.crop;
-      harvest(state, plotIndex, now);
+      if (!harvest(state, plotIndex, now).ok) {
+        if (!warnedFull) hud.toast('Basket full! Sell at the Haat →');
+        warnedFull = true;
+        return;
+      }
+      warnedFull = false;
       record(playtest, 'harvest', crop);
       hud.float(`+1 ${CROPS[crop].icon}`, up(at, 1), camera);
       lastHarvested = plotIndex;
@@ -267,6 +275,11 @@ function interact(dt: number, now: number, moving: boolean): void {
   haatCooldown -= dt;
   if (haatCooldown <= 0 && pos.distanceTo(HAAT_ZONE) < HAAT_ZONE_RADIUS + 0.4) {
     const order = state.orders.find((o) => canFulfill(state, o));
+    const surplus = order ? null : sellSurplus(state);
+    if (surplus) {
+      haatCooldown = 0.35;
+      hud.float(`+🪙${surplus.coins}`, up(HAAT_ZONE, 2), camera);
+    }
     if (order) {
       haatCooldown = 0.35;
       const r = fulfill(state, order.id, now);
@@ -347,6 +360,7 @@ function nextGoal(now: number): string {
   const k = kolhuStatus(state, now);
   if (k === 'ready') return '← Your jaggery is ready at the kolhu';
   if (orderProgress(state).some((p) => p.ready)) return 'Take your harvest to the Haat →';
+  if (basketFull(state)) return 'Basket full! Sell the extra at the Haat →';
   if (k === 'idle' && state.inventory.sugarcane >= KOLHU.inputQty) return `← Take ${KOLHU.inputQty} 🎋 to the kolhu to make jaggery`;
   if (state.plots.some((p) => p.crop && isRipe(p, now))) return 'Walk over ripe crops to harvest them';
   if (state.plots.some((p) => p.unlocked && !p.crop)) return 'Walk onto empty soil to plant';

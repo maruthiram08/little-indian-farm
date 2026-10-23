@@ -67,6 +67,11 @@ export const HORSE = {
   speed: 1.4,
 };
 
+// How much the farmer can carry at each level; index 0 is level 1.
+export const BASKET_CAP = [10, 15, 20, 25, 30];
+// When the basket is full, the haat buys goods no order wants at this share of their value.
+export const SURPLUS_RATE = 0.5;
+
 export const GRID_SIZE = 4;
 export const START_PLOTS = 4;
 export const START_COINS = 10;

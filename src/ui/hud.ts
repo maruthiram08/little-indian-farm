@@ -1,7 +1,7 @@
 // The on-screen layer over the 3D village: coins, level, orders, seeds, labels and dialogs.
 import * as THREE from 'three';
 import { CROPS, CROP_ORDER, CropId, ITEMS, ITEM_ORDER, LEVEL_XP, MAX_LEVEL, MAX_ORDERS } from '../game/data';
-import { GameState, isCropUnlocked, levelProgress, orderProgress } from '../game/sim';
+import { GameState, basketCap, basketCount, isCropUnlocked, levelProgress, orderProgress } from '../game/sim';
 import { villagerLook } from '../three/world';
 import { avatarHtml, icon, installIcons, setRich } from './icons';
 
@@ -178,17 +178,19 @@ export class Hud {
     }
 
     const carried = ITEM_ORDER.filter((id) => state.inventory[id] > 0);
-    const basketKey = carried.map((id) => `${id}${state.inventory[id]}`).join(',');
+    const basketKey = carried.map((id) => `${id}${state.inventory[id]}`).join(',') + `/${basketCap(state)}`;
     if (basketKey !== this.basketKey) {
       this.basketKey = basketKey;
       this.basket.replaceChildren();
       this.basket.classList.toggle('empty', carried.length === 0);
+      this.basket.classList.toggle('full', basketCount(state) >= basketCap(state));
       for (const id of carried) {
         const slot = el('span', 'slot');
         slot.append(icon(id), el('span', 'slot-num', String(state.inventory[id])));
         slot.title = ITEMS[id].name;
         this.basket.appendChild(slot);
       }
+      if (carried.length) this.basket.appendChild(el('span', 'basket-cap', `${basketCount(state)}/${basketCap(state)}`));
     }
   }
 

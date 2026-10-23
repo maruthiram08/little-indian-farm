@@ -3,6 +3,9 @@ import { CROPS, HORSE, KOLHU, LEVEL_XP, MAX_LEVEL } from '../src/game/data';
 import {
   buyPlot,
   orderProgress,
+  basketCap,
+  basketCount,
+  sellSurplus,
   hireHorse,
   rideLeft,
   collectPress,
@@ -134,6 +137,7 @@ describe('closed loop', () => {
       collectPress(s, now);
       startPress(s, now);
       for (const o of [...s.orders]) fulfill(s, o.id, now);
+      sellSurplus(s);
       // Drop orders that wait too long so the haat keeps moving.
       if (s.orders.length === 3 && rng() < 0.01) dismissOrder(s, s.orders[0].id, now);
       s.plots.forEach((p, i) => {
@@ -186,5 +190,34 @@ describe('horse ride', () => {
     expect(rideLeft(s, 1000)).toBe(HORSE.rideMs - 1000);
     expect(hireHorse(s, 1000).ok).toBe(false);
     expect(rideLeft(s, HORSE.rideMs + 1)).toBe(0);
+  });
+});
+
+describe('basket', () => {
+  it('stops harvesting when full and sells only unwanted goods', () => {
+    const s = newGame(0);
+    s.inventory.wheat = basketCap(s);
+    s.plots[0].crop = 'wheat';
+    s.plots[0].plantedAt = -1e6;
+    expect(harvest(s, 0, 0).ok).toBe(false);
+    // Dadi wants 2 wheat, so those stay; the rest can go.
+    const coins = s.coins;
+    const sold = sellSurplus(s);
+    expect(sold?.item).toBe('wheat');
+    expect(s.coins).toBe(coins + sold!.coins);
+    expect(sellSurplus(s)).toBeNull();
+    s.inventory.wheat = 2;
+    s.inventory.marigold = basketCap(s) - 2;
+    expect(sellSurplus(s)?.item).toBe('marigold');
+  });
+});
+
+describe('old saves', () => {
+  it('sells an overflowing basket down to the limit on load', () => {
+    const s = newGame(0);
+    s.inventory.wheat = 212;
+    const r = restore(JSON.parse(JSON.stringify(s)), 0);
+    expect(basketCount(r)).toBe(basketCap(r));
+    expect(r.coins).toBeGreaterThan(s.coins);
   });
 });

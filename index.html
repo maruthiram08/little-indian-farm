@@ -114,6 +114,9 @@
       .basket { display: grid; grid-template-columns: repeat(2, auto); gap: 2px 8px; padding: 4px 8px; border-radius: 12px; margin-bottom: 8px;
         background: rgba(78, 13, 24, 0.72); border: 2px solid rgba(246, 227, 196, 0.6); }
       .basket.empty { visibility: hidden; }
+      .basket.full { border-color: #ffd34d; box-shadow: 0 0 0 2px rgba(255, 211, 77, 0.5); }
+      .basket-cap { grid-column: 1 / -1; text-align: center; font-weight: 800; font-size: 11px; color: #f6e3c4; padding-top: 1px; }
+      .basket.full .basket-cap { color: #ffd34d; }
       .slot { position: relative; display: flex; align-items: center; gap: 2px; }
       .slot .ic { width: 20px; height: 20px; vertical-align: 0; }
       .slot-num { font-weight: 800; font-size: 14px; padding-top: 3px; color: #fff; text-shadow: 0 1.5px 0 #000, 1px 0 0 #000, -1px 0 0 #000; margin-right: 4px; }
