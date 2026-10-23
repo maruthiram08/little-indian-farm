@@ -14,6 +14,9 @@ export interface HudHandlers {
   onSeed: (crop: CropId) => void;
   onDismiss: (orderId: number) => void;
   onReset: () => void;
+  onReport: () => void;
+  /** Shows the playtest report button, for builds shared with testers. */
+  showReport: boolean;
 }
 
 interface Label {
@@ -51,6 +54,12 @@ export class Hud {
     reset.setAttribute('aria-label', 'Start over');
     reset.addEventListener('click', () => this.handlers.onReset());
     top.append(this.coins, this.level, reset);
+    if (handlers.showReport) {
+      const rep = el('button', 'icon-btn', '📋');
+      rep.setAttribute('aria-label', 'Playtest report');
+      rep.addEventListener('click', () => this.handlers.onReport());
+      top.insertBefore(rep, reset);
+    }
 
     const orders = el('div', 'orders');
     for (let i = 0; i < MAX_ORDERS; i++) {
@@ -191,5 +200,41 @@ export class Hud {
     shade.appendChild(card);
     this.root.appendChild(shade);
     (row.lastElementChild as HTMLButtonElement | null)?.focus();
+  }
+
+  /** The playtest report, with a button that copies it for pasting into a chat. */
+  report(text: string): void {
+    this.modalOpen = true;
+    const shade = el('div', 'shade');
+    const card = el('div', 'modal report');
+    card.setAttribute('role', 'dialog');
+    const box = el('textarea', 'report-text');
+    box.value = text;
+    box.readOnly = true;
+    box.rows = text.split('\n').length;
+    card.append(el('h2', '', 'Playtest report'), el('p', '', 'Copy this and send it back. Thank you for playing!'), box);
+    const row = el('div', 'modal-actions');
+    const close = el('button', 'btn', 'Close');
+    close.addEventListener('click', () => {
+      shade.remove();
+      this.modalOpen = false;
+    });
+    const copy = el('button', 'btn primary', 'Copy report');
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        copy.textContent = 'Copied ✓';
+      } catch {
+        // Clipboard can be blocked inside frames; leave the text selected for a manual copy.
+        box.focus();
+        box.select();
+        copy.textContent = 'Selected, press copy';
+      }
+    });
+    row.append(close, copy);
+    card.appendChild(row);
+    shade.appendChild(card);
+    this.root.appendChild(shade);
+    copy.focus();
   }
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CROPS, CropId, ITEMS, KOLHU, LEVEL_UNLOCK_TEXT, MAX_LEVEL } from './game/data';
-import { clearSave, loadGame, saveGame } from './game/save';
+import { addPlayTime, record, report } from './game/playtest';
+import { clearSave, loadGame, loadLog, saveGame, saveLog } from './game/save';
 import {
   GameState,
   buyPlot,
@@ -23,6 +24,8 @@ import { Hud } from './ui/hud';
 
 let state: GameState = loadGame(Date.now());
 let selectedSeed: CropId = 'wheat';
+const playtest = loadLog(Date.now());
+const playtestMode = new URLSearchParams(location.search).has('playtest') || location.hash === '#playtest';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -44,8 +47,13 @@ const hud = new Hud({
     hud.toast(`Now planting ${CROPS[crop].name} ${CROPS[crop].icon}`);
   },
   onDismiss(id) {
-    dismissOrder(state, id, Date.now());
+    if (dismissOrder(state, id, Date.now()).ok) record(playtest, 'dismiss');
   },
+  onReport() {
+    const device = `${navigator.userAgent.match(/\(([^)]+)\)/)?.[1] ?? 'unknown'} · ${window.innerWidth}×${window.innerHeight}`;
+    hud.report(report(playtest, device));
+  },
+  showReport: playtestMode,
   onReset() {
     hud.modal('Start over?', 'This clears your village and starts a new game.', [
       { text: 'Cancel' },
@@ -54,6 +62,7 @@ const hud = new Hud({
         primary: true,
         onClick: () => {
           clearSave();
+          record(playtest, 'reset');
           state = loadGame(Date.now());
           selectedSeed = 'wheat';
           world = new World();
@@ -72,7 +81,10 @@ function resize(): void {
 window.addEventListener('resize', resize);
 resize();
 
-const persist = () => saveGame(state);
+const persist = () => {
+  saveGame(state);
+  saveLog(playtest);
+};
 document.addEventListener('visibilitychange', persist);
 window.addEventListener('pagehide', persist);
 
@@ -136,19 +148,24 @@ function interact(dt: number, now: number): void {
         holdDone = true;
         const cost = nextPlotCost(state);
         const r = buyPlot(state, plotIndex);
-        if (r.ok) hud.float(`Cleared! −🪙${cost}`, up(at, 1), camera);
+        if (r.ok) {
+          record(playtest, 'plot');
+          hud.float(`Cleared! −🪙${cost}`, up(at, 1), camera);
+        }
         else hud.toast(`Clearing this land costs 🪙 ${cost}`);
       }
     } else if (!p.crop) {
       const r = plant(state, plotIndex, selectedSeed, now);
+      if (r.ok) record(playtest, 'plant', selectedSeed);
       if (!r.ok && selectedSeed !== 'wheat') {
-        plant(state, plotIndex, 'wheat', now);
+        if (plant(state, plotIndex, 'wheat', now).ok) record(playtest, 'plant', 'wheat');
         if (!warnedSeed) hud.toast(`Not enough coins for ${CROPS[selectedSeed].name}, planted wheat`);
         warnedSeed = true;
       }
     } else if (isRipe(p, now)) {
       const crop = p.crop;
       harvest(state, plotIndex, now);
+      record(playtest, 'harvest', crop);
       hud.float(`+1 ${CROPS[crop].icon}`, up(at, 1.2), camera);
       if (hintStage === 1) {
         hintStage = 2;
@@ -162,9 +179,11 @@ function interact(dt: number, now: number): void {
     const k = kolhuStatus(state, now);
     if (k === 'ready') {
       collectPress(state, now);
+      record(playtest, 'kolhu-collect');
       hud.float('+1 🟫', up(KOLHU_POS, 2.2), camera);
     } else if (k === 'idle' && state.inventory.sugarcane >= KOLHU.inputQty) {
       startPress(state, now);
+      record(playtest, 'kolhu-start');
       hud.float(`−${KOLHU.inputQty} 🎋`, up(KOLHU_POS, 2.2), camera);
     }
   }
@@ -177,6 +196,8 @@ function interact(dt: number, now: number): void {
       haatCooldown = 0.35;
       const r = fulfill(state, order.id, now);
       if (r.ok) {
+        record(playtest, 'order', order.who);
+        r.levelsGained.forEach((level) => record(playtest, level >= MAX_LEVEL ? 'diwali' : 'level', String(level)));
         hud.float(`+🪙${order.coins}`, up(HAAT_ZONE, 2), camera);
         saveGame(state);
         if (hintStage < 3) {
@@ -249,6 +270,7 @@ function frame(ms: number): void {
   last = ms;
   const now = Date.now();
   tick(state, now, Math.random);
+  if (!document.hidden) addPlayTime(playtest, dt);
   const moving = step(dt);
   interact(dt, now);
   world.update(state, now, ms / 1000, moving);
@@ -265,7 +287,7 @@ function frame(ms: number): void {
   hud.placeLabels(camera);
 
   if (now - lastSave > 5000) {
-    saveGame(state);
+    persist();
     lastSave = now;
   }
   requestAnimationFrame(frame);
