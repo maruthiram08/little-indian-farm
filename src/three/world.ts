@@ -30,7 +30,7 @@ export const PLOT = 2.05;
 export const KOLHU_POS = new THREE.Vector3(-7.6, 0, 0.5);
 export const HAAT_POS = new THREE.Vector3(8.0, 0, -0.5);
 export const HAAT_ZONE = new THREE.Vector3(6.0, 0, -0.5);
-export const KOLHU_ZONE_RADIUS = 2.0;
+export const KOLHU_ZONE_RADIUS = 2.4;
 export const HAAT_ZONE_RADIUS = 1.4;
 export const BOUNDS = { minX: -12, maxX: 11.5, minZ: -12.5, maxZ: 9.5 };
 
@@ -131,7 +131,6 @@ export class World {
     this.kolhuModel.root.position.copy(KOLHU_POS);
     s.add(this.kolhuModel.root);
     this.kolhuRing.position.set(KOLHU_POS.x + 0.4, 0.03, KOLHU_POS.z);
-    this.kolhuRing.scale.setScalar(1.7);
     s.add(this.kolhuRing);
     this.obstacles.push({ x: KOLHU_POS.x, z: KOLHU_POS.z, r: 1.2 });
 
@@ -281,9 +280,9 @@ export class World {
     this.scene.fog = new THREE.Fog('#3b2a5c', 28, 55);
     this.hemi.color.set('#ffc98a');
     this.hemi.groundColor.set('#3a3020');
-    this.hemi.intensity = 1.0;
+    this.hemi.intensity = 1.35;
     this.sun.color.set('#ff9d5c');
-    this.sun.intensity = 1.1;
+    this.sun.intensity = 1.4;
     const spots: [number, number][] = [];
     for (let x = -10; x <= 10; x += 2) spots.push([x, 5.7]);
     for (let z = -4.8; z <= 4.8; z += 2.4) spots.push([-5.3, z], [5.3, z]);

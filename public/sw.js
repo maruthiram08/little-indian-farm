@@ -1,5 +1,5 @@
 // Cache-first service worker so the game opens offline after the first visit.
-const CACHE = 'little-village-story-v1';
+const CACHE = 'little-village-story-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html', './manifest.webmanifest', './icon.svg'])));
