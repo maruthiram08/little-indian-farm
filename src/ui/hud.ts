@@ -35,6 +35,8 @@ export class Hud {
   private toastNode = el('div', 'toast');
   private toastTimer = 0;
   private labels = new Map<string, Label>();
+  // World labels sit under the panels so they never cover the order chips.
+  private labelLayer = el('div', 'labels');
   private v = new THREE.Vector3();
   modalOpen = false;
 
@@ -68,7 +70,7 @@ export class Hud {
     }
     bottom.append(this.store, seeds);
 
-    this.root.append(top, orders, bottom, this.toastNode);
+    this.root.append(this.labelLayer, top, orders, bottom, this.toastNode);
   }
 
   render(state: GameState, selectedSeed: CropId): void {
@@ -83,28 +85,22 @@ export class Hud {
       if (key === this.orderKeys[i]) continue;
       this.orderKeys[i] = key;
       card.replaceChildren();
-      card.classList.toggle('waiting', !o);
-      if (!o) {
-        card.appendChild(el('div', 'order-wait', 'Someone is coming…'));
-        card.classList.remove('ready');
-        continue;
-      }
+      card.hidden = !o;
+      if (!o) continue;
       const ready = canFulfill(state, o);
       card.classList.toggle('ready', ready);
-      const head = el('div', 'order-head');
-      head.append(el('span', 'order-icon', o.icon), el('span', 'order-name', o.who));
+      card.title = `${o.who}: 🪙 ${o.coins} · ⭐ ${o.xp}`;
+      card.appendChild(el('span', 'order-icon', o.icon));
+      const lines = el('span', 'order-lines');
+      for (const l of o.lines) {
+        const have = Math.min(state.inventory[l.item], l.qty);
+        lines.appendChild(el('span', have >= l.qty ? 'line done' : 'line', `${ITEMS[l.item].icon}${have}/${l.qty}`));
+      }
+      card.append(lines, el('span', 'order-reward', ready ? '✓' : `🪙${o.coins}`));
       const x = el('button', 'order-x', '✕');
       x.setAttribute('aria-label', `Send ${o.who} away`);
       x.addEventListener('click', () => this.handlers.onDismiss(o.id));
-      head.appendChild(x);
-      const lines = el('div', 'order-lines');
-      for (const l of o.lines) {
-        const have = Math.min(state.inventory[l.item], l.qty);
-        const line = el('span', have >= l.qty ? 'line done' : 'line', `${ITEMS[l.item].icon} ${have}/${l.qty}`);
-        lines.appendChild(line);
-      }
-      const foot = el('div', 'order-foot', ready ? 'Ready → haat' : `🪙 ${o.coins} · ⭐ ${o.xp}`);
-      card.append(head, lines, foot);
+      card.appendChild(x);
     }
 
     const seedKey = `${state.level}:${selectedSeed}`;
@@ -138,7 +134,7 @@ export class Hud {
     }
     if (!l) {
       l = { node: el('div', `label ${cls}`), pos: pos.clone() };
-      this.root.appendChild(l.node);
+      this.labelLayer.appendChild(l.node);
       this.labels.set(id, l);
     }
     l.node.hidden = false;
@@ -163,7 +159,7 @@ export class Hud {
   /** A short "+1" that rises from a point in the world and fades. */
   float(text: string, pos: THREE.Vector3, camera: THREE.Camera): void {
     const node = el('div', 'float', text);
-    this.root.appendChild(node);
+    this.labelLayer.appendChild(node);
     this.project(node, pos, camera);
     window.setTimeout(() => node.remove(), 1000);
   }

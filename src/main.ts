@@ -223,7 +223,7 @@ function updateLabels(now: number): void {
   const farmerPos = world.farmer.root.position;
   state.plots.forEach((p, i) => {
     // Only price the land around the farmer, so the field stays readable.
-    const show = !p.unlocked && plotCenter(i).distanceTo(farmerPos) < 3.6;
+    const show = !p.unlocked && plotCenter(i).distanceTo(farmerPos) < 2.8;
     const holding = i === currentPlot && show && !holdDone;
     hud.label(`plot-${i}`, show ? (holding ? '⏳ Clearing…' : `🪙 ${cost}`) : null, up(plotCenter(i), 1.1), 'small');
   });
