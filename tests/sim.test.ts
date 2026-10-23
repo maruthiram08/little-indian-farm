@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CROPS, KOLHU, LEVEL_XP, MAX_LEVEL } from '../src/game/data';
 import {
   buyPlot,
+  orderProgress,
   collectPress,
   dismissOrder,
   fulfill,
@@ -155,5 +156,19 @@ describe('saves', () => {
     expect(restore(null, T0).coins).toBe(10);
     expect(restore({ version: 99 }, T0).coins).toBe(10);
     expect(restore({ version: 1, plots: [] }, T0).plots.length).toBe(16);
+  });
+});
+
+describe('order progress', () => {
+  it('shares one carried pile across orders, first order first', () => {
+    const s = newGame(0);
+    s.orders = [
+      { id: 1, who: 'Dadi', icon: '👵', lines: [{ item: 'wheat', qty: 2 }], coins: 10, xp: 8 },
+      { id: 2, who: 'Ravi', icon: '👦', lines: [{ item: 'wheat', qty: 3 }], coins: 15, xp: 10 },
+    ];
+    s.inventory.wheat = 3;
+    const [a, b] = orderProgress(s);
+    expect(a).toEqual({ have: [2], ready: true });
+    expect(b).toEqual({ have: [1], ready: false });
   });
 });

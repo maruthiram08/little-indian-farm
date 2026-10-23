@@ -14,6 +14,7 @@ import {
   isRipe,
   kolhuStatus,
   nextPlotCost,
+  orderProgress,
   plant,
   startPress,
   tick,
@@ -44,7 +45,7 @@ const hud = new Hud({
       return;
     }
     selectedSeed = crop;
-    hud.toast(`Now planting ${CROPS[crop].name} ${CROPS[crop].icon}`);
+    hud.toast(`Fields you harvest now get ${CROPS[crop].name} ${CROPS[crop].icon}`);
   },
   onDismiss(id) {
     if (dismissOrder(state, id, Date.now()).ok) record(playtest, 'dismiss');
@@ -100,6 +101,16 @@ function step(dt: number): boolean {
   let x = farmer.position.x + dir.x * SPEED * dt;
   let z = farmer.position.z + dir.z * SPEED * dt;
   for (const o of world.obstacles) {
+    if (o.hw !== undefined && o.hd !== undefined) {
+      // Push out of a box along whichever side is nearest.
+      const px = o.hw + 0.35 - Math.abs(x - o.x);
+      const pz = o.hd + 0.35 - Math.abs(z - o.z);
+      if (px > 0 && pz > 0) {
+        if (px < pz) x += Math.sign(x - o.x || 1) * px;
+        else z += Math.sign(z - o.z || 1) * pz;
+      }
+      continue;
+    }
     const dx = x - o.x;
     const dz = z - o.z;
     const d = Math.hypot(dx, dz);
@@ -128,7 +139,9 @@ let warnedSeed = false;
 let hintStage = state.xp > 0 ? 3 : 0;
 const up = (v: THREE.Vector3, y: number) => v.clone().setY(y);
 
-function interact(dt: number, now: number): void {
+const CLEAR_HOLD = 1;
+
+function interact(dt: number, now: number, moving: boolean): void {
   if (hud.modalOpen) return;
   const pos = world.farmer.root.position;
   const plotIndex = plotAt(pos.x, pos.z);
@@ -143,8 +156,15 @@ function interact(dt: number, now: number): void {
     const p = state.plots[plotIndex];
     const at = plotCenter(plotIndex);
     if (!p.unlocked) {
-      holdTime += dt;
-      if (holdTime > 0.7 && !holdDone) {
+      // Land is cleared only when you stop on it, so walking across the field never spends coins.
+      const affordable = state.coins >= nextPlotCost(state);
+      if (moving || !affordable) holdTime = 0;
+      else holdTime += dt;
+      if (!affordable && !moving && !warnedSeed) {
+        warnedSeed = true;
+        hud.toast(`Clearing this land costs 🪙 ${nextPlotCost(state)}`);
+      }
+      if (holdTime > CLEAR_HOLD && !holdDone) {
         holdDone = true;
         const cost = nextPlotCost(state);
         const r = buyPlot(state, plotIndex);
@@ -156,9 +176,15 @@ function interact(dt: number, now: number): void {
       }
     } else if (!p.crop) {
       const r = plant(state, plotIndex, selectedSeed, now);
-      if (r.ok) record(playtest, 'plant', selectedSeed);
+      if (r.ok) {
+        record(playtest, 'plant', selectedSeed);
+        hud.float(`🌱${CROPS[selectedSeed].icon}`, up(at, 0.8), camera);
+      }
       if (!r.ok && selectedSeed !== 'wheat') {
-        if (plant(state, plotIndex, 'wheat', now).ok) record(playtest, 'plant', 'wheat');
+        if (plant(state, plotIndex, 'wheat', now).ok) {
+          record(playtest, 'plant', 'wheat');
+          hud.float('🌱🌾', up(at, 0.8), camera);
+        }
         if (!warnedSeed) hud.toast(`Not enough coins for ${CROPS[selectedSeed].name}, planted wheat`);
         warnedSeed = true;
       }
@@ -245,13 +271,38 @@ function updateLabels(now: number): void {
   state.plots.forEach((p, i) => {
     // Only price the land around the farmer, so the field stays readable.
     const show = !p.unlocked && plotCenter(i).distanceTo(farmerPos) < 2.8;
-    const holding = i === currentPlot && show && !holdDone;
-    hud.label(`plot-${i}`, show ? (holding ? '⏳ Clearing…' : `🪙 ${cost}`) : null, up(plotCenter(i), 1.1), 'small');
+    const here = i === currentPlot && !holdDone;
+    const text = !here ? `🪙 ${cost}` : state.coins < cost ? `🪙 ${cost} · need more` : holdTime > 0 ? '⏳ Clearing…' : `🪙 ${cost} · stand still`;
+    hud.label(`plot-${i}`, show ? text : null, up(plotCenter(i), 1.1), 'small');
   });
   state.plots.forEach((p, i) => {
     const ready = p.crop && isRipe(p, now);
     hud.label(`ripe-${i}`, ready ? `${ITEMS[p.crop!].icon}` : null, up(plotCenter(i), 1.8), 'bubble');
   });
+}
+
+// ---------- what to do next ----------
+
+/** One line under the field telling the player their next useful step. */
+function nextGoal(now: number): string {
+  const k = kolhuStatus(state, now);
+  if (k === 'ready') return '← Your jaggery is ready at the kolhu';
+  if (orderProgress(state).some((p) => p.ready)) return 'Take your harvest to the Haat →';
+  if (k === 'idle' && state.inventory.sugarcane >= KOLHU.inputQty) return `← Take ${KOLHU.inputQty} 🎋 to the kolhu to make jaggery`;
+  if (state.plots.some((p) => p.crop && isRipe(p, now))) return 'Walk over ripe crops to harvest them';
+  if (state.plots.some((p) => p.unlocked && !p.crop)) return 'Walk onto empty soil to plant';
+  // An order that needs a crop nobody is growing would stall quietly, so say so.
+  const growing = new Set(state.plots.map((p) => p.crop));
+  for (const o of state.orders) {
+    for (const l of o.lines) {
+      if (l.item in CROPS && l.item !== selectedSeed && !growing.has(l.item as CropId) && state.inventory[l.item] < l.qty) {
+        const c = CROPS[l.item as CropId];
+        if (isCropUnlocked(state, c.id)) return `${o.who} needs ${c.icon} but none is growing. Tap ${c.icon} below`;
+      }
+    }
+  }
+  if (state.level >= MAX_LEVEL) return '';
+  return `Crops growing… Level ${state.level + 1}: ${LEVEL_UNLOCK_TEXT[state.level + 1]}`;
 }
 
 // ---------- loop ----------
@@ -266,13 +317,13 @@ if (hintStage === 0) {
 }
 
 function frame(ms: number): void {
-  const dt = Math.min(0.05, (ms - last) / 1000);
+  const dt = Math.min(0.1, (ms - last) / 1000);
   last = ms;
   const now = Date.now();
   tick(state, now, Math.random);
   if (!document.hidden) addPlayTime(playtest, dt);
   const moving = step(dt);
-  interact(dt, now);
+  interact(dt, now, moving);
   world.update(state, now, ms / 1000, moving);
 
   const farmer = world.farmer.root;
@@ -283,7 +334,7 @@ function frame(ms: number): void {
   renderer.render(world.scene, camera);
 
   updateLabels(now);
-  hud.render(state, selectedSeed);
+  hud.render(state, selectedSeed, nextGoal(now));
   hud.placeLabels(camera);
 
   if (now - lastSave > 5000) {

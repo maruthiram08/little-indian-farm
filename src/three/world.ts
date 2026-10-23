@@ -34,10 +34,13 @@ export const KOLHU_ZONE_RADIUS = 2.4;
 export const HAAT_ZONE_RADIUS = 1.4;
 export const BOUNDS = { minX: -12, maxX: 11.5, minZ: -12.5, maxZ: 9.5 };
 
+/** A round obstacle, or a box when hw/hd (half width and depth) are set. */
 export interface Obstacle {
   x: number;
   z: number;
   r: number;
+  hw?: number;
+  hd?: number;
 }
 
 export function plotCenter(index: number): THREE.Vector3 {
@@ -141,7 +144,9 @@ export class World {
     s.add(stall);
     this.haatRing.position.set(HAAT_ZONE.x, 0.03, HAAT_ZONE.z);
     s.add(this.haatRing);
-    this.obstacles.push({ x: HAAT_POS.x, z: HAAT_POS.z - 0.8, r: 0.9 }, { x: HAAT_POS.x, z: HAAT_POS.z + 0.8, r: 0.9 });
+    // One box for the stall and the villagers behind it, out to the edge, so the farmer can't get wedged back there.
+    const back = BOUNDS.maxX + 1;
+    this.obstacles.push({ x: (HAAT_POS.x - 0.7 + back) / 2, z: HAAT_POS.z - 0.3, r: 0, hw: (back - HAAT_POS.x + 0.7) / 2, hd: 2.3 });
     for (let i = 0; i < MAX_ORDERS; i++) {
       this.villagers.push(person({ top: '#ccc', bottom: '#ccc', head: '#333', headKind: 'hair' }));
       this.villagerKeys.push('');

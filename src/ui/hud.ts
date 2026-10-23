@@ -1,7 +1,7 @@
 // The on-screen layer over the 3D village: coins, level, orders, seeds, labels and dialogs.
 import * as THREE from 'three';
 import { CROPS, CROP_ORDER, CropId, ITEMS, ITEM_ORDER, MAX_LEVEL, MAX_ORDERS } from '../game/data';
-import { GameState, canFulfill, isCropUnlocked, levelProgress } from '../game/sim';
+import { GameState, isCropUnlocked, levelProgress, orderProgress } from '../game/sim';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
   const e = document.createElement(tag);
@@ -35,6 +35,7 @@ export class Hud {
   private seedButtons = new Map<CropId, HTMLButtonElement>();
   private seedKey = '';
   private store = el('div', 'store');
+  private goal = el('div', 'goal');
   private toastNode = el('div', 'toast');
   private toastTimer = 0;
   private labels = new Map<string, Label>();
@@ -77,12 +78,14 @@ export class Hud {
       seeds.appendChild(b);
       this.seedButtons.set(id, b);
     }
-    bottom.append(this.store, seeds);
+    bottom.append(this.goal, this.store, seeds);
 
     this.root.append(this.labelLayer, top, orders, bottom, this.toastNode);
   }
 
-  render(state: GameState, selectedSeed: CropId): void {
+  render(state: GameState, selectedSeed: CropId, goal: string): void {
+    if (this.goal.textContent !== goal) this.goal.textContent = goal;
+    const progress = orderProgress(state);
     this.coins.textContent = `🪙 ${state.coins}`;
     this.levelText.textContent = state.level >= MAX_LEVEL ? `Level ${state.level} 🪔` : `Level ${state.level}`;
     this.xpFill.style.width = `${Math.round(levelProgress(state) * 100)}%`;
@@ -90,19 +93,19 @@ export class Hud {
     for (let i = 0; i < MAX_ORDERS; i++) {
       const o = state.orders[i];
       const card = this.orderCards[i];
-      const key = o ? `${o.id}:${o.lines.map((l) => state.inventory[l.item]).join(',')}` : 'empty';
+      const key = o ? `${o.id}:${progress[i].have.join(',')}` : 'empty';
       if (key === this.orderKeys[i]) continue;
       this.orderKeys[i] = key;
       card.replaceChildren();
       card.hidden = !o;
       if (!o) continue;
-      const ready = canFulfill(state, o);
+      const ready = progress[i].ready;
       card.classList.toggle('ready', ready);
       card.title = `${o.who}: 🪙 ${o.coins} · ⭐ ${o.xp}`;
       card.appendChild(el('span', 'order-icon', o.icon));
       const lines = el('span', 'order-lines');
-      for (const l of o.lines) {
-        const have = Math.min(state.inventory[l.item], l.qty);
+      for (const [n, l] of o.lines.entries()) {
+        const have = progress[i].have[n];
         lines.appendChild(el('span', have >= l.qty ? 'line done' : 'line', `${ITEMS[l.item].icon}${have}/${l.qty}`));
       }
       card.append(lines, el('span', 'order-reward', ready ? '✓' : `🪙${o.coins}`));

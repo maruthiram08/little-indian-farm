@@ -186,6 +186,23 @@ export function canFulfill(state: GameState, order: Order): boolean {
   return order.lines.every((l) => state.inventory[l.item] >= l.qty);
 }
 
+export interface OrderProgress {
+  /** How many of each line's items are set aside for this order. */
+  have: number[];
+  ready: boolean;
+}
+
+/** Splits what you carry across the orders in turn, so two orders never count the same wheat. */
+export function orderProgress(state: GameState): OrderProgress[] {
+  const left = { ...state.inventory };
+  return state.orders.map((o) => {
+    const ready = o.lines.every((l) => left[l.item] >= l.qty);
+    const have = o.lines.map((l) => Math.min(left[l.item], l.qty));
+    if (ready) for (const l of o.lines) left[l.item] -= l.qty;
+    return { have, ready };
+  });
+}
+
 export interface FulfillResult {
   ok: boolean;
   reason?: string;
