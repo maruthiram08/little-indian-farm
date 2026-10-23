@@ -1,0 +1,10 @@
+{
+  "name": "Little Village Story",
+  "short_name": "Village Story",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#f6e7c1",
+  "theme_color": "#b5482a",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
