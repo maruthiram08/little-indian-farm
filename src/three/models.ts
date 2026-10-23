@@ -357,3 +357,69 @@ export function zoneRing(radius: number): THREE.Mesh {
   m.position.y = 0.03;
   return m;
 }
+
+// ---------- the village ghoda ----------
+
+export interface Horse {
+  root: THREE.Group;
+  legs: THREE.Group[];
+  /** Where a rider sits, relative to the horse. */
+  seatY: number;
+}
+
+/** A brown horse dressed for a village wedding: red saddle cloth, gold trim and a plume. Faces +z. */
+export function horse(): Horse {
+  const root = new THREE.Group();
+  const coat = '#9a5b2a';
+  const dark = '#3b2414';
+  root.add(mesh(box(0.62, 0.58, 1.35), coat, 0, 1.12, 0));
+  const neck = mesh(box(0.34, 0.75, 0.38), coat, 0, 1.55, 0.62);
+  neck.rotation.x = 0.55;
+  root.add(neck);
+  const head = mesh(box(0.3, 0.3, 0.62), coat, 0, 1.86, 0.92);
+  head.rotation.x = 0.25;
+  root.add(head);
+  root.add(mesh(box(0.08, 0.16, 0.06), coat, -0.1, 2.08, 0.72), mesh(box(0.08, 0.16, 0.06), coat, 0.1, 2.08, 0.72));
+  root.add(mesh(box(0.05, 0.05, 0.02), '#111', -0.16, 1.92, 0.98, false), mesh(box(0.05, 0.05, 0.02), '#111', 0.16, 1.92, 0.98, false));
+  const mane = mesh(box(0.1, 0.7, 0.18), dark, 0, 1.68, 0.48);
+  mane.rotation.x = 0.55;
+  root.add(mane);
+  const tail = mesh(box(0.14, 0.62, 0.14), dark, 0, 1.0, -0.78);
+  tail.rotation.x = -0.4;
+  root.add(tail);
+  // Saddle cloth with gold border, and a plume on the forehead
+  root.add(mesh(box(0.72, 0.42, 0.66), PALETTE.red, 0, 1.24, -0.05));
+  root.add(mesh(box(0.74, 0.06, 0.68), '#f2c230', 0, 1.06, -0.05));
+  root.add(mesh(box(0.5, 0.1, 0.5), '#7a1f12', 0, 1.47, -0.05));
+  root.add(mesh(cyl(0.03, 0.06, 0.3, 5), '#f2c230', 0, 2.12, 0.86));
+  root.add(mesh(new THREE.IcosahedronGeometry(0.1, 0), '#e8452c', 0, 2.3, 0.86));
+  const legs: THREE.Group[] = [];
+  for (const [x, z] of [[-0.2, 0.5], [0.2, 0.5], [-0.2, -0.5], [0.2, -0.5]]) {
+    const leg = new THREE.Group();
+    leg.add(mesh(box(0.16, 0.82, 0.16), coat, 0, -0.41, 0));
+    leg.add(mesh(box(0.18, 0.12, 0.2), dark, 0, -0.8, 0.01));
+    leg.position.set(x, 0.86, z);
+    root.add(leg);
+    legs.push(leg);
+  }
+  return { root, legs, seatY: 1.45 };
+}
+
+export function animateGallop(h: Horse, t: number, moving: boolean): void {
+  const swing = moving ? Math.sin(t * 14) * 0.7 : 0;
+  h.legs[0].rotation.x = swing;
+  h.legs[3].rotation.x = swing;
+  h.legs[1].rotation.x = -swing;
+  h.legs[2].rotation.x = -swing;
+}
+
+/** A hitching post with a hay bale, where the ghoda waits. */
+export function horseStand(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(mesh(box(0.14, 1.2, 0.14), PALETTE.woodDark, -0.9, 0.6, 0), mesh(box(0.14, 1.2, 0.14), PALETTE.woodDark, 0.9, 0.6, 0));
+  g.add(mesh(box(2.0, 0.12, 0.12), PALETTE.wood, 0, 1.1, 0));
+  g.add(mesh(box(0.9, 0.5, 0.6), PALETTE.thatch, 1.6, 0.25, 0.3));
+  g.add(mesh(box(0.8, 0.3, 0.45), PALETTE.stone, -1.6, 0.15, 0.4));
+  g.add(mesh(box(0.66, 0.05, 0.32), '#5ec8ff', -1.6, 0.31, 0.4, false));
+  return g;
+}

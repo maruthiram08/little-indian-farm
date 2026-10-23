@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CROPS, KOLHU, LEVEL_XP, MAX_LEVEL } from '../src/game/data';
+import { CROPS, HORSE, KOLHU, LEVEL_XP, MAX_LEVEL } from '../src/game/data';
 import {
   buyPlot,
   orderProgress,
+  hireHorse,
+  rideLeft,
   collectPress,
   dismissOrder,
   fulfill,
@@ -170,5 +172,19 @@ describe('order progress', () => {
     const [a, b] = orderProgress(s);
     expect(a).toEqual({ have: [2], ready: true });
     expect(b).toEqual({ have: [1], ready: false });
+  });
+});
+
+describe('horse ride', () => {
+  it('hires the ghoda from level 2 for coins, one ride at a time', () => {
+    const s = newGame(0);
+    s.coins = 100;
+    expect(hireHorse(s, 0).ok).toBe(false);
+    s.level = HORSE.unlockLevel;
+    expect(hireHorse(s, 0).ok).toBe(true);
+    expect(s.coins).toBe(100 - HORSE.cost);
+    expect(rideLeft(s, 1000)).toBe(HORSE.rideMs - 1000);
+    expect(hireHorse(s, 1000).ok).toBe(false);
+    expect(rideLeft(s, HORSE.rideMs + 1)).toBe(0);
   });
 });

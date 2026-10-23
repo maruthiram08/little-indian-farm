@@ -53,10 +53,18 @@ export const LEVEL_XP = [0, 80, 320, 800, 1600];
 export const MAX_LEVEL = LEVEL_XP.length;
 
 export const LEVEL_UNLOCK_TEXT: Record<number, string> = {
-  2: 'Marigold seeds unlocked 🌼',
+  2: 'Marigold seeds and the ghoda ride unlocked 🌼🐎',
   3: 'Sugarcane and the kolhu unlocked 🎋',
   4: 'Bigger orders from the city trader 🚚',
   5: 'The village celebrates Diwali! 🪔',
+};
+
+// Hire the village ghoda (horse) for a short, fast ride.
+export const HORSE = {
+  unlockLevel: 2,
+  cost: 15,
+  rideMs: 40_000,
+  speed: 1.8,
 };
 
 export const GRID_SIZE = 4;

@@ -1,7 +1,9 @@
 // The on-screen layer over the 3D village: coins, level, orders, seeds, labels and dialogs.
 import * as THREE from 'three';
-import { CROPS, CROP_ORDER, CropId, ITEMS, ITEM_ORDER, MAX_LEVEL, MAX_ORDERS } from '../game/data';
+import { CROPS, CROP_ORDER, CropId, ITEMS, ITEM_ORDER, LEVEL_XP, MAX_LEVEL, MAX_ORDERS } from '../game/data';
 import { GameState, isCropUnlocked, levelProgress, orderProgress } from '../game/sim';
+import { villagerLook } from '../three/world';
+import { avatarHtml, icon, installIcons, setRich } from './icons';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
   const e = document.createElement(tag);
@@ -26,15 +28,18 @@ interface Label {
 
 export class Hud {
   private root = el('div', 'hud');
-  private coins = el('div', 'pill coins');
-  private level = el('div', 'pill level');
-  private levelText = el('span');
-  private xpFill = el('div', 'xp-fill');
+  private coins = el('span', 'counter-num');
+  private levelNum = el('span', 'star-num');
+  private xpFill = el('div', 'bar-fill');
+  private xpText = el('span', 'bar-text');
+  private ride = el('div', 'counter ride');
+  private rideText = el('span', 'counter-num');
   private orderCards: HTMLDivElement[] = [];
   private orderKeys: string[] = [];
   private seedButtons = new Map<CropId, HTMLButtonElement>();
   private seedKey = '';
-  private store = el('div', 'store');
+  private basket = el('div', 'basket');
+  private basketKey = '-';
   private goal = el('div', 'goal');
   private toastNode = el('div', 'toast');
   private toastTimer = 0;
@@ -45,24 +50,27 @@ export class Hud {
   modalOpen = false;
 
   constructor(private handlers: HudHandlers) {
+    installIcons();
     document.body.appendChild(this.root);
 
     const top = el('div', 'top');
-    const xp = el('div', 'xp');
-    xp.appendChild(this.xpFill);
-    this.level.append(this.levelText, xp);
-    const reset = el('button', 'icon-btn', '↺');
-    reset.setAttribute('aria-label', 'Start over');
-    reset.addEventListener('click', () => this.handlers.onReset());
-    top.append(this.coins, this.level, reset);
-    if (handlers.showReport) {
-      const rep = el('button', 'icon-btn', '📋');
-      rep.setAttribute('aria-label', 'Playtest report');
-      rep.addEventListener('click', () => this.handlers.onReport());
-      top.insertBefore(rep, reset);
-    }
+    const coins = el('div', 'counter');
+    coins.append(icon('coin', 'counter-icon'), this.coins);
+    const level = el('div', 'level');
+    const star = el('div', 'star');
+    star.append(icon('star'), this.levelNum);
+    const bar = el('div', 'bar');
+    bar.append(this.xpFill, this.xpText);
+    level.append(bar, star);
+    this.ride.append(icon('horse', 'counter-icon'), this.rideText);
+    this.ride.hidden = true;
+    const buttons = el('div', 'top-buttons');
+    if (handlers.showReport) buttons.appendChild(this.squareButton('report', 'Playtest report', () => this.handlers.onReport()));
+    buttons.appendChild(this.squareButton('restart', 'Start over', () => this.handlers.onReset()));
+    top.append(coins, level, buttons);
 
     const orders = el('div', 'orders');
+    orders.appendChild(this.ride);
     for (let i = 0; i < MAX_ORDERS; i++) {
       const card = el('div', 'order');
       orders.appendChild(card);
@@ -78,17 +86,36 @@ export class Hud {
       seeds.appendChild(b);
       this.seedButtons.set(id, b);
     }
-    bottom.append(this.goal, this.store, seeds);
+    bottom.append(this.goal, this.basket, seeds);
 
     this.root.append(this.labelLayer, top, orders, bottom, this.toastNode);
   }
 
-  render(state: GameState, selectedSeed: CropId, goal: string): void {
-    if (this.goal.textContent !== goal) this.goal.textContent = goal;
+  private squareButton(name: string, label: string, onClick: () => void): HTMLButtonElement {
+    const b = el('button', 'square-btn');
+    b.setAttribute('aria-label', label);
+    b.appendChild(icon(name));
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  render(state: GameState, selectedSeed: CropId, goal: string, rideLeftMs: number): void {
+    setRich(this.goal, goal);
     const progress = orderProgress(state);
-    this.coins.textContent = `🪙 ${state.coins}`;
-    this.levelText.textContent = state.level >= MAX_LEVEL ? `Level ${state.level} 🪔` : `Level ${state.level}`;
-    this.xpFill.style.width = `${Math.round(levelProgress(state) * 100)}%`;
+    const coins = String(state.coins);
+    if (this.coins.textContent !== coins) this.coins.textContent = coins;
+    const lvl = String(state.level);
+    if (this.levelNum.textContent !== lvl) this.levelNum.textContent = lvl;
+    const max = state.level >= MAX_LEVEL;
+    this.xpFill.style.width = `${Math.round((max ? 1 : levelProgress(state)) * 100)}%`;
+    const xpText = max ? 'Diwali!' : `${state.xp - LEVEL_XP[state.level - 1]} / ${LEVEL_XP[state.level] - LEVEL_XP[state.level - 1]}`;
+    if (this.xpText.textContent !== xpText) this.xpText.textContent = xpText;
+
+    this.ride.hidden = rideLeftMs <= 0;
+    if (rideLeftMs > 0) {
+      const secs = `0:${String(Math.ceil(rideLeftMs / 1000)).padStart(2, '0')}`;
+      if (this.rideText.textContent !== secs) this.rideText.textContent = secs;
+    }
 
     for (let i = 0; i < MAX_ORDERS; i++) {
       const o = state.orders[i];
@@ -101,15 +128,22 @@ export class Hud {
       if (!o) continue;
       const ready = progress[i].ready;
       card.classList.toggle('ready', ready);
-      card.title = `${o.who}: 🪙 ${o.coins} · ⭐ ${o.xp}`;
-      card.appendChild(el('span', 'order-icon', o.icon));
-      const lines = el('span', 'order-lines');
+      card.title = `${o.who}: ${o.coins} coins, ${o.xp} xp`;
+      const face = el('span', 'order-face');
+      face.innerHTML = avatarHtml(villagerLook(o.who));
+      card.appendChild(face);
       for (const [n, l] of o.lines.entries()) {
         const have = progress[i].have[n];
-        lines.appendChild(el('span', have >= l.qty ? 'line done' : 'line', `${ITEMS[l.item].icon}${have}/${l.qty}`));
+        const line = el('span', have >= l.qty ? 'line done' : 'line');
+        line.append(icon(l.item), el('span', '', `${have}/${l.qty}`));
+        card.appendChild(line);
       }
-      card.append(lines, el('span', 'order-reward', ready ? '✓' : `🪙${o.coins}`));
-      const x = el('button', 'order-x', '✕');
+      const reward = el('span', 'order-reward');
+      if (ready) reward.appendChild(icon('check'));
+      else reward.append(icon('coin'), el('span', '', String(o.coins)));
+      card.appendChild(reward);
+      const x = el('button', 'order-x');
+      x.appendChild(icon('close'));
       x.setAttribute('aria-label', `Send ${o.who} away`);
       x.addEventListener('click', () => this.handlers.onDismiss(o.id));
       card.appendChild(x);
@@ -123,18 +157,30 @@ export class Hud {
         const open = isCropUnlocked(state, id);
         b.classList.toggle('selected', id === selectedSeed);
         b.classList.toggle('locked', !open);
-        b.replaceChildren(
-          el('span', 'seed-icon', open ? crop.icon : '🔒'),
-          el('span', 'seed-cost', open ? (crop.seedCost ? `🪙 ${crop.seedCost}` : 'Free') : `Level ${crop.unlockLevel}`),
-        );
+        const tag = el('span', crop.seedCost || !open ? 'tag' : 'tag free');
+        if (!open) tag.textContent = `Lv ${crop.unlockLevel}`;
+        else if (crop.seedCost) tag.append(icon('coin'), el('span', '', String(crop.seedCost)));
+        else tag.textContent = 'Free';
+        b.replaceChildren(icon(id, 'seed-icon'), tag);
+        if (!open) b.appendChild(icon('lock', 'seed-lock'));
         b.setAttribute('aria-label', open ? `Plant ${crop.name}` : `${crop.name} unlocks at level ${crop.unlockLevel}`);
       }
     }
 
-    const carried = ITEM_ORDER.filter((id) => state.inventory[id] > 0)
-      .map((id) => `${ITEMS[id].icon} ${state.inventory[id]}`)
-      .join('   ');
-    this.store.textContent = carried || 'Carrying nothing';
+    const carried = ITEM_ORDER.filter((id) => state.inventory[id] > 0);
+    const basketKey = carried.map((id) => `${id}${state.inventory[id]}`).join(',');
+    if (basketKey !== this.basketKey) {
+      this.basketKey = basketKey;
+      this.basket.replaceChildren();
+      this.basket.classList.toggle('empty', carried.length === 0);
+      if (!carried.length) this.basket.textContent = 'Basket empty';
+      for (const id of carried) {
+        const slot = el('span', 'slot');
+        slot.append(icon(id), el('span', 'slot-num', String(state.inventory[id])));
+        slot.title = ITEMS[id].name;
+        this.basket.appendChild(slot);
+      }
+    }
   }
 
   /** A text label that follows a point in the world. */
@@ -151,7 +197,7 @@ export class Hud {
     }
     l.node.hidden = false;
     l.pos.copy(pos);
-    if (l.node.textContent !== text) l.node.textContent = text;
+    setRich(l.node, text);
   }
 
   placeLabels(camera: THREE.Camera): void {
@@ -170,14 +216,15 @@ export class Hud {
 
   /** A short "+1" that rises from a point in the world and fades. */
   float(text: string, pos: THREE.Vector3, camera: THREE.Camera): void {
-    const node = el('div', 'float', text);
+    const node = el('div', 'float');
+    setRich(node, text);
     this.labelLayer.appendChild(node);
     this.project(node, pos, camera);
     window.setTimeout(() => node.remove(), 1000);
   }
 
   toast(message: string): void {
-    this.toastNode.textContent = message;
+    setRich(this.toastNode, message);
     this.toastNode.classList.add('show');
     window.clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => this.toastNode.classList.remove('show'), 1900);
@@ -188,7 +235,11 @@ export class Hud {
     const shade = el('div', festive ? 'shade festive' : 'shade');
     const card = el('div', 'modal');
     card.setAttribute('role', 'dialog');
-    card.append(el('h2', '', title), el('p', '', body));
+    const h = el('h2');
+    setRich(h, title);
+    const p = el('p');
+    setRich(p, body);
+    card.append(h, p);
     const row = el('div', 'modal-actions');
     for (const a of actions) {
       const b = el('button', a.primary ? 'btn primary' : 'btn', a.text);

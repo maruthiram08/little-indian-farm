@@ -11,6 +11,7 @@ export type PlaytestEvent =
   | 'dismiss'
   | 'level'
   | 'diwali'
+  | 'horse'
   | 'reset';
 
 export interface PlaytestEntry {
@@ -77,7 +78,7 @@ export function report(log: PlaytestLog, device: string): string {
     '',
     `Orders filled: ${count('order')} · sent away: ${count('dismiss')}`,
     `Harvests: ${count('harvest')} · land cleared: ${count('plot')} · jaggery made: ${count('kolhu-collect')}`,
-    `Restarts: ${count('reset')}`,
+    `Ghoda rides: ${count('horse')} · restarts: ${count('reset')}`,
     '',
     `Device: ${device}`,
   );

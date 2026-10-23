@@ -4,6 +4,7 @@ import {
   CROPS,
   CropId,
   GRID_SIZE,
+  HORSE,
   ITEMS,
   ITEM_ORDER,
   ItemId,
@@ -50,6 +51,8 @@ export interface GameState {
   plotsBought: number;
   inventory: Record<ItemId, number>;
   kolhuStartedAt: number | null;
+  /** When the current horse ride ends; 0 when not riding. */
+  horseUntil: number;
   orders: Order[];
   nextOrderAt: number;
   nextOrderId: number;
@@ -77,6 +80,7 @@ export function newGame(now: number): GameState {
     plotsBought: 0,
     inventory: { wheat: 0, marigold: 0, sugarcane: 0, jaggery: 0 },
     kolhuStartedAt: null,
+    horseUntil: 0,
     // A first, easy order so a new player knows what to do.
     orders: [{ id: 1, who: 'Dadi', icon: '👵', lines: [{ item: 'wheat', qty: 2 }], coins: 10, xp: 8 }],
     nextOrderAt: now + ORDER_GAP_MS,
@@ -149,6 +153,19 @@ export function buyPlot(state: GameState, index: number): Result {
   state.coins -= cost;
   plot.unlocked = true;
   state.plotsBought += 1;
+  return ok;
+}
+
+export function rideLeft(state: GameState, now: number): number {
+  return Math.max(0, state.horseUntil - now);
+}
+
+export function hireHorse(state: GameState, now: number): Result {
+  if (state.level < HORSE.unlockLevel) return fail(`The ghoda is free from level ${HORSE.unlockLevel}`);
+  if (rideLeft(state, now) > 0) return fail('Already riding');
+  if (state.coins < HORSE.cost) return fail(`A ride costs ${HORSE.cost} coins`);
+  state.coins -= HORSE.cost;
+  state.horseUntil = now + HORSE.rideMs;
   return ok;
 }
 

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CROPS, CropId, ITEMS, KOLHU, LEVEL_UNLOCK_TEXT, MAX_LEVEL } from './game/data';
+import { CROPS, CropId, HORSE, ITEMS, KOLHU, LEVEL_UNLOCK_TEXT, MAX_LEVEL } from './game/data';
 import { addPlayTime, record, report } from './game/playtest';
 import { clearSave, loadGame, loadLog, saveGame, saveLog } from './game/save';
 import {
@@ -10,17 +10,31 @@ import {
   dismissOrder,
   fulfill,
   harvest,
+  hireHorse,
   isCropUnlocked,
   isRipe,
   kolhuStatus,
   nextPlotCost,
   orderProgress,
   plant,
+  rideLeft,
   startPress,
   tick,
 } from './game/sim';
 import { Controls } from './three/controls';
-import { BOUNDS, HAAT_ZONE, HAAT_ZONE_RADIUS, KOLHU_POS, KOLHU_ZONE_RADIUS, World, plotAt, plotCenter } from './three/world';
+import {
+  BOUNDS,
+  HAAT_ZONE,
+  HAAT_ZONE_RADIUS,
+  HORSE_POS,
+  HORSE_ZONE,
+  HORSE_ZONE_RADIUS,
+  KOLHU_POS,
+  KOLHU_ZONE_RADIUS,
+  World,
+  plotAt,
+  plotCenter,
+} from './three/world';
 import { Hud } from './ui/hud';
 
 let state: GameState = loadGame(Date.now());
@@ -98,8 +112,9 @@ function step(dt: number): boolean {
   const farmer = world.farmer.root;
   const dir = controls.direction();
   if (Math.hypot(dir.x, dir.z) < 0.05) return false;
-  let x = farmer.position.x + dir.x * SPEED * dt;
-  let z = farmer.position.z + dir.z * SPEED * dt;
+  const speed = SPEED * (rideLeft(state, Date.now()) > 0 ? HORSE.speed : 1);
+  let x = farmer.position.x + dir.x * speed * dt;
+  let z = farmer.position.z + dir.z * speed * dt;
   for (const o of world.obstacles) {
     if (o.hw !== undefined && o.hd !== undefined) {
       // Push out of a box along whichever side is nearest.
@@ -135,6 +150,9 @@ let currentPlot = -1;
 let holdTime = 0;
 let holdDone = false;
 let haatCooldown = 0;
+let horseHold = 0;
+let warnedHorse = false;
+let wasRiding = false;
 let warnedSeed = false;
 let hintStage = state.xp > 0 ? 3 : 0;
 const up = (v: THREE.Vector3, y: number) => v.clone().setY(y);
@@ -199,6 +217,25 @@ function interact(dt: number, now: number, moving: boolean): void {
       }
     }
   }
+
+  // Ghoda: stand still at the hitching post to hire a ride
+  const atHorse = pos.distanceTo(HORSE_ZONE) < HORSE_ZONE_RADIUS + 0.2;
+  if (!atHorse || moving || rideLeft(state, now) > 0 || state.level < HORSE.unlockLevel) horseHold = 0;
+  else if (state.coins < HORSE.cost) {
+    if (!warnedHorse) hud.toast(`A ghoda ride costs 🪙 ${HORSE.cost}`);
+    warnedHorse = true;
+  } else {
+    horseHold += dt;
+    if (horseHold > 0.6 && hireHorse(state, now).ok) {
+      horseHold = 0;
+      record(playtest, 'horse');
+      hud.float(`−🪙${HORSE.cost}`, up(HORSE_ZONE, 2.4), camera);
+      hud.toast(`Chal, ghoda! 🐎 Faster for ${HORSE.rideMs / 1000}s`);
+    }
+  }
+  if (!atHorse) warnedHorse = false;
+  if (wasRiding && rideLeft(state, now) <= 0) hud.toast('The ghoda trotted back to its post 🐎');
+  wasRiding = rideLeft(state, now) > 0;
 
   // Kolhu: drop off sugarcane, pick up jaggery
   if (pos.distanceTo(KOLHU_ZONE) < KOLHU_ZONE_RADIUS + 0.2) {
@@ -265,6 +302,16 @@ function updateLabels(now: number): void {
           ? 'Jaggery ready! 🟫'
           : `Kolhu · bring ${KOLHU.inputQty} 🎋`;
   hud.label('kolhu', kText, up(KOLHU_POS, 2.6), k === 'ready' ? 'hot' : '');
+  const riding = rideLeft(state, now) > 0;
+  const horseText =
+    state.level < HORSE.unlockLevel
+      ? `🔒 Ghoda · level ${HORSE.unlockLevel}`
+      : riding
+        ? null
+        : horseHold > 0
+          ? '⏳ Saddling…'
+          : `🐎 Ride · 🪙 ${HORSE.cost}`;
+  hud.label('horse', horseText, up(HORSE_POS, 2.7), !riding && state.coins >= HORSE.cost && state.level >= HORSE.unlockLevel ? 'hot' : '');
   hud.label('haat', 'Haat', up(HAAT_ZONE, 2.4), state.orders.some((o) => canFulfill(state, o)) ? 'hot' : '');
   const cost = nextPlotCost(state);
   const farmerPos = world.farmer.root.position;
@@ -334,7 +381,7 @@ function frame(ms: number): void {
   renderer.render(world.scene, camera);
 
   updateLabels(now);
-  hud.render(state, selectedSeed, nextGoal(now));
+  hud.render(state, selectedSeed, nextGoal(now), rideLeft(state, now));
   hud.placeLabels(camera);
 
   if (now - lastSave > 5000) {

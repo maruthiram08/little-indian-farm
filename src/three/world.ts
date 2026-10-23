@@ -1,16 +1,19 @@
 // The 3D village: layout, lighting, and per-frame visuals driven by the game state.
 import * as THREE from 'three';
-import { CROPS, GRID_SIZE, ITEM_ORDER, MAX_ORDERS, VILLAGERS } from '../game/data';
-import { GameState, growProgress, isRipe, kolhuStatus } from '../game/sim';
+import { CROPS, GRID_SIZE, HORSE, ITEM_ORDER, MAX_ORDERS, VILLAGERS } from '../game/data';
+import { GameState, growProgress, isRipe, kolhuStatus, rideLeft } from '../game/sim';
 import {
   PALETTE,
   Person,
+  animateGallop,
   animateWalk,
   bush,
   carryItem,
   cropModel,
   diya,
   haatStall,
+  horse,
+  horseStand,
   house,
   kolhu,
   lamp,
@@ -32,6 +35,10 @@ export const HAAT_POS = new THREE.Vector3(8.0, 0, -0.5);
 export const HAAT_ZONE = new THREE.Vector3(6.0, 0, -0.5);
 export const KOLHU_ZONE_RADIUS = 2.4;
 export const HAAT_ZONE_RADIUS = 1.4;
+// The ghoda waits at a hitching post on the left, below the kolhu.
+export const HORSE_POS = new THREE.Vector3(-9.0, 0, 3.6);
+export const HORSE_ZONE = new THREE.Vector3(-7.4, 0, 5.0);
+export const HORSE_ZONE_RADIUS = 1.1;
 export const BOUNDS = { minX: -12, maxX: 11.5, minZ: -12.5, maxZ: 9.5 };
 
 /** A round obstacle, or a box when hw/hd (half width and depth) are set. */
@@ -74,6 +81,9 @@ export class World {
   private kolhuModel = kolhu();
   private kolhuRing = zoneRing(KOLHU_ZONE_RADIUS);
   private haatRing = zoneRing(HAAT_ZONE_RADIUS);
+  private horseRing = zoneRing(HORSE_ZONE_RADIUS);
+  private ghoda = horse();
+  private riding = false;
   private villagers: Person[] = [];
   private villagerKeys: string[] = [];
   private carryKey = '';
@@ -152,6 +162,15 @@ export class World {
       this.villagerKeys.push('');
     }
 
+    // The ghoda's hitching post
+    const stand = horseStand();
+    stand.position.set(HORSE_POS.x, 0, HORSE_POS.z - 0.7);
+    s.add(stand);
+    this.obstacles.push({ x: HORSE_POS.x, z: HORSE_POS.z - 0.2, r: 0, hw: 1.9, hd: 0.8 });
+    this.horseRing.position.set(HORSE_ZONE.x, 0.03, HORSE_ZONE.z);
+    s.add(this.horseRing);
+    this.parkHorse();
+
     // Dadi's house and the well
     const h = house();
     h.position.set(-3, 0, -9.5);
@@ -192,7 +211,28 @@ export class World {
 
   /** Sync meshes to the game state; cheap when nothing changed. */
   update(state: GameState, now: number, t: number, moving: boolean): void {
-    animateWalk(this.farmer, t, moving);
+    const riding = rideLeft(state, now) > 0;
+    if (riding !== this.riding) {
+      this.riding = riding;
+      if (riding) {
+        // The ghoda rides under the farmer, who sits astride it.
+        this.ghoda.root.position.set(0, -this.ghoda.seatY, 0);
+        this.ghoda.root.rotation.y = 0;
+        this.farmer.root.add(this.ghoda.root);
+      } else this.parkHorse();
+    }
+    if (riding) {
+      animateGallop(this.ghoda, t, moving);
+      this.farmer.root.position.y = this.ghoda.seatY + (moving ? Math.abs(Math.sin(t * 14)) * 0.1 : 0);
+      this.farmer.legL.rotation.set(-1.2, 0, 0.5);
+      this.farmer.legR.rotation.set(-1.2, 0, -0.5);
+      this.farmer.armL.rotation.x = this.farmer.armR.rotation.x = -0.9;
+    } else {
+      this.farmer.legL.rotation.z = this.farmer.legR.rotation.z = 0;
+      animateWalk(this.farmer, t, moving);
+    }
+    this.pulse(this.horseRing, t, !riding && state.level >= HORSE.unlockLevel && state.coins >= HORSE.cost);
+    this.horseRing.visible = !riding && state.level >= HORSE.unlockLevel;
 
     state.plots.forEach((p, i) => {
       const v = this.plots[i];
@@ -272,6 +312,13 @@ export class World {
     }
   }
 
+  private parkHorse(): void {
+    this.ghoda.root.position.copy(HORSE_POS);
+    this.ghoda.root.rotation.y = Math.PI / 2;
+    animateGallop(this.ghoda, 0, false);
+    this.scene.add(this.ghoda.root);
+  }
+
   private pulse(ring: THREE.Mesh, t: number, active: boolean): void {
     const m = ring.material as THREE.MeshBasicMaterial;
     m.color.set(active ? '#ffd166' : '#ffffff');
@@ -311,7 +358,7 @@ export class World {
   }
 }
 
-function villagerLook(name: string) {
+export function villagerLook(name: string) {
   const i = Math.max(0, VILLAGERS.findIndex((v) => v.name === name));
   const looks = [
     { top: '#f5f5f5', bottom: '#f5f5f5', head: '#ff8c1a', headKind: 'turban' as const },
@@ -322,6 +369,7 @@ function villagerLook(name: string) {
     { top: '#ffbe0b', bottom: '#5c4033', head: '#1d1d1d', headKind: 'hair' as const },
     { top: '#ffffff', bottom: '#ffffff', head: '#ffffff', headKind: 'cap' as const },
   ];
+  if (name === 'Dadi') return { top: '#f8f3e6', bottom: '#f8f3e6', head: '#bdbdbd', headKind: 'hair' as const, saree: true };
   if (name === 'City trader') return { top: '#264653', bottom: '#264653', head: '#1d1d1d', headKind: 'cap' as const };
   return looks[i % looks.length];
 }
