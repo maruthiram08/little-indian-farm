@@ -117,13 +117,14 @@ export function person(look: PersonLook): Person {
   return { root, legL, legR, armL, armR, carry };
 }
 
-export function animateWalk(p: Person, t: number, moving: boolean): void {
-  const swing = moving ? Math.sin(t * 12) * 0.6 : 0;
+/** Walk cycle; weight eases from 0 (standing) to 1 (walking) so starts and stops blend. */
+export function animateWalk(p: Person, t: number, weight: number): void {
+  const swing = Math.sin(t * 8) * 0.45 * weight;
   p.legL.rotation.x = swing;
   p.legR.rotation.x = -swing;
   p.armL.rotation.x = -swing * 0.7;
   p.armR.rotation.x = swing * 0.7;
-  p.root.position.y = moving ? Math.abs(Math.sin(t * 12)) * 0.06 : 0;
+  p.root.position.y = Math.abs(Math.sin(t * 8)) * 0.045 * weight;
 }
 
 // ---------- fields and crops ----------
@@ -405,8 +406,8 @@ export function horse(): Horse {
   return { root, legs, seatY: 1.45 };
 }
 
-export function animateGallop(h: Horse, t: number, moving: boolean): void {
-  const swing = moving ? Math.sin(t * 14) * 0.7 : 0;
+export function animateGallop(h: Horse, t: number, weight: number): void {
+  const swing = Math.sin(t * 9) * 0.55 * weight;
   h.legs[0].rotation.x = swing;
   h.legs[3].rotation.x = swing;
   h.legs[1].rotation.x = -swing;

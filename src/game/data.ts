@@ -64,7 +64,7 @@ export const HORSE = {
   unlockLevel: 2,
   cost: 15,
   rideMs: 40_000,
-  speed: 1.8,
+  speed: 1.4,
 };
 
 export const GRID_SIZE = 4;

@@ -71,6 +71,8 @@ interface PlotVisual {
   root: THREE.Group;
   key: string;
   content: THREE.Object3D | null;
+  /** When the current crop model appeared, for its pop-in. */
+  bornAt: number;
 }
 
 export class World {
@@ -84,6 +86,8 @@ export class World {
   private horseRing = zoneRing(HORSE_ZONE_RADIUS);
   private ghoda = horse();
   private riding = false;
+  private walkWeight = 0;
+  private lastT = 0;
   private villagers: Person[] = [];
   private villagerKeys: string[] = [];
   private carryKey = '';
@@ -137,7 +141,7 @@ export class World {
       const root = new THREE.Group();
       root.position.copy(plotCenter(i));
       s.add(root);
-      this.plots.push({ root, key: '', content: null });
+      this.plots.push({ root, key: '', content: null, bornAt: -10 });
     }
 
     // Kolhu (sugarcane press)
@@ -211,6 +215,10 @@ export class World {
 
   /** Sync meshes to the game state; cheap when nothing changed. */
   update(state: GameState, now: number, t: number, moving: boolean): void {
+    const dt = Math.min(0.1, t - this.lastT);
+    this.lastT = t;
+    this.walkWeight += ((moving ? 1 : 0) - this.walkWeight) * (1 - Math.exp(-dt * 7));
+    const w = this.walkWeight;
     const riding = rideLeft(state, now) > 0;
     if (riding !== this.riding) {
       this.riding = riding;
@@ -222,14 +230,14 @@ export class World {
       } else this.parkHorse();
     }
     if (riding) {
-      animateGallop(this.ghoda, t, moving);
-      this.farmer.root.position.y = this.ghoda.seatY + (moving ? Math.abs(Math.sin(t * 14)) * 0.1 : 0);
+      animateGallop(this.ghoda, t, w);
+      this.farmer.root.position.y = this.ghoda.seatY + Math.abs(Math.sin(t * 9)) * 0.07 * w;
       this.farmer.legL.rotation.set(-1.2, 0, 0.5);
       this.farmer.legR.rotation.set(-1.2, 0, -0.5);
       this.farmer.armL.rotation.x = this.farmer.armR.rotation.x = -0.9;
     } else {
       this.farmer.legL.rotation.z = this.farmer.legR.rotation.z = 0;
-      animateWalk(this.farmer, t, moving);
+      animateWalk(this.farmer, t, w);
     }
     this.pulse(this.horseRing, t, !riding && state.level >= HORSE.unlockLevel && state.coins >= HORSE.cost);
     this.horseRing.visible = !riding && state.level >= HORSE.unlockLevel;
@@ -249,12 +257,13 @@ export class World {
           v.content = cropModel(stage === 'sprout' ? 'sprout' : p.crop);
           v.content.position.y = 0.12;
           v.root.add(v.content);
+          v.bornAt = t;
         }
       }
       if (v.content) {
-        if (stage === 'growing') v.content.scale.setScalar(0.45 + 0.45 * progress);
-        else if (stage === 'ripe') v.content.scale.setScalar(1 + Math.sin(t * 5 + i) * 0.04);
-        else v.content.scale.setScalar(1);
+        const pop = easeOutBack(Math.min(1, (t - v.bornAt) / 0.5));
+        const base = stage === 'growing' ? 0.45 + 0.45 * progress : stage === 'ripe' ? 1 + Math.sin(t * 2.5 + i) * 0.03 : 1;
+        v.content.scale.setScalar(base * pop);
       }
     });
 
@@ -282,8 +291,8 @@ export class World {
       }
       if (o) {
         const v = this.villagers[i];
-        v.root.position.y = Math.abs(Math.sin(t * 2 + i)) * 0.04;
-        v.armR.rotation.z = Math.sin(t * 3 + i) * 0.2 + 0.2;
+        v.root.position.y = Math.abs(Math.sin(t * 1.4 + i)) * 0.03;
+        v.armR.rotation.z = Math.sin(t * 1.8 + i) * 0.18 + 0.2;
       }
     }
     const canDeliver = state.orders.some((o) => o.lines.every((l) => state.inventory[l.item] >= l.qty));
@@ -307,7 +316,7 @@ export class World {
     if (this.festive) {
       this.festive.children.forEach((c, n) => {
         const flame = c.getObjectByName('flame');
-        if (flame) flame.scale.y = 1 + Math.sin(t * 9 + n) * 0.25;
+        if (flame) flame.scale.y = 1 + Math.sin(t * 5 + n) * 0.2;
       });
     }
   }
@@ -315,14 +324,14 @@ export class World {
   private parkHorse(): void {
     this.ghoda.root.position.copy(HORSE_POS);
     this.ghoda.root.rotation.y = Math.PI / 2;
-    animateGallop(this.ghoda, 0, false);
+    animateGallop(this.ghoda, 0, 0);
     this.scene.add(this.ghoda.root);
   }
 
   private pulse(ring: THREE.Mesh, t: number, active: boolean): void {
     const m = ring.material as THREE.MeshBasicMaterial;
     m.color.set(active ? '#ffd166' : '#ffffff');
-    m.opacity = active ? 0.65 + Math.sin(t * 6) * 0.3 : 0.45;
+    m.opacity = active ? 0.6 + Math.sin(t * 3) * 0.25 : 0.45;
   }
 
   /** Diwali evening: warm dusk light, diyas on the paths and lamps on the house. */
@@ -375,3 +384,9 @@ export function villagerLook(name: string) {
 }
 
 export { CROPS };
+
+/** Overshoots a touch and settles, for things popping into place. */
+function easeOutBack(x: number): number {
+  const c = 1.4;
+  return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2);
+}

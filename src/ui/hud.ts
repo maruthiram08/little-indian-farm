@@ -220,7 +220,7 @@ export class Hud {
     setRich(node, text);
     this.labelLayer.appendChild(node);
     this.project(node, pos, camera);
-    window.setTimeout(() => node.remove(), 1000);
+    window.setTimeout(() => node.remove(), 1500);
   }
 
   toast(message: string): void {

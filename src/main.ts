@@ -107,14 +107,22 @@ window.addEventListener('pagehide', persist);
 
 const SPEED = 5.5;
 
+const velocity = new THREE.Vector3();
+const wanted = new THREE.Vector3();
+
 function step(dt: number): boolean {
-  if (hud.modalOpen) return false;
   const farmer = world.farmer.root;
-  const dir = controls.direction();
-  if (Math.hypot(dir.x, dir.z) < 0.05) return false;
+  const dir = hud.modalOpen ? { x: 0, z: 0 } : controls.direction();
   const speed = SPEED * (rideLeft(state, Date.now()) > 0 ? HORSE.speed : 1);
-  let x = farmer.position.x + dir.x * speed * dt;
-  let z = farmer.position.z + dir.z * speed * dt;
+  // Ease towards the wanted velocity, so starting, stopping and turning feel smooth rather than snappy.
+  wanted.set(dir.x * speed, 0, dir.z * speed);
+  velocity.lerp(wanted, 1 - Math.exp(-dt * 9));
+  if (velocity.length() < 0.25 && wanted.lengthSq() === 0) {
+    velocity.set(0, 0, 0);
+    return false;
+  }
+  let x = farmer.position.x + velocity.x * dt;
+  let z = farmer.position.z + velocity.z * dt;
   for (const o of world.obstacles) {
     if (o.hw !== undefined && o.hd !== undefined) {
       // Push out of a box along whichever side is nearest.
@@ -137,9 +145,9 @@ function step(dt: number): boolean {
   }
   farmer.position.x = THREE.MathUtils.clamp(x, BOUNDS.minX, BOUNDS.maxX);
   farmer.position.z = THREE.MathUtils.clamp(z, BOUNDS.minZ, BOUNDS.maxZ);
-  let diff = Math.atan2(dir.x, dir.z) - farmer.rotation.y;
+  let diff = Math.atan2(velocity.x, velocity.z) - farmer.rotation.y;
   diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-  farmer.rotation.y += diff * Math.min(1, dt * 14);
+  farmer.rotation.y += diff * (1 - Math.exp(-dt * 8));
   return true;
 }
 
@@ -355,6 +363,7 @@ function nextGoal(now: number): string {
 // ---------- loop ----------
 
 const camTarget = new THREE.Vector3();
+const camGoal = new THREE.Vector3();
 let last = performance.now();
 let lastSave = 0;
 
@@ -375,7 +384,10 @@ function frame(ms: number): void {
 
   const farmer = world.farmer.root;
   const back = THREE.MathUtils.clamp(0.9 / camera.aspect, 1, 1.75);
-  camTarget.set(farmer.position.x * 0.8, 0, farmer.position.z * 0.85 + 1.2);
+  camGoal.set(farmer.position.x * 0.8, 0, farmer.position.z * 0.85 + 1.2);
+  // The camera trails the farmer a little instead of being bolted on.
+  if (camTarget.lengthSq() === 0) camTarget.copy(camGoal);
+  else camTarget.lerp(camGoal, 1 - Math.exp(-dt * 4));
   camera.position.set(camTarget.x, 13 * back, camTarget.z + 10.5 * back);
   camera.lookAt(camTarget);
   renderer.render(world.scene, camera);
