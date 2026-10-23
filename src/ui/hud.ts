@@ -44,6 +44,7 @@ export class Hud {
   private toastNode = el('div', 'toast');
   private toastTimer = 0;
   private labels = new Map<string, Label>();
+  private floats = new Map<string, Label>();
   // World labels sit under the panels so they never cover the order chips.
   private labelLayer = el('div', 'labels');
   private v = new THREE.Vector3();
@@ -205,6 +206,8 @@ export class Hud {
       if (l.node.hidden) continue;
       this.project(l.node, l.pos, camera);
     }
+    // Floats stay pinned to their spot in the world while the camera glides.
+    for (const f of this.floats.values()) this.project(f.node, f.pos, camera);
   }
 
   private project(node: HTMLElement, pos: THREE.Vector3, camera: THREE.Camera): void {
@@ -216,11 +219,19 @@ export class Hud {
 
   /** A short "+1" that rises from a point in the world and fades. */
   float(text: string, pos: THREE.Vector3, camera: THREE.Camera): void {
+    // One float per spot at a time: a newer one replaces the older, so they never stack into a jumble.
+    const key = `${pos.x.toFixed(1)},${pos.z.toFixed(1)}`;
+    this.floats.get(key)?.node.remove();
     const node = el('div', 'float');
     setRich(node, text);
     this.labelLayer.appendChild(node);
-    this.project(node, pos, camera);
-    window.setTimeout(() => node.remove(), 1500);
+    const f = { node, pos: pos.clone() };
+    this.floats.set(key, f);
+    this.project(node, f.pos, camera);
+    window.setTimeout(() => {
+      node.remove();
+      if (this.floats.get(key) === f) this.floats.delete(key);
+    }, 1500);
   }
 
   toast(message: string): void {

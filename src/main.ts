@@ -159,6 +159,7 @@ let holdTime = 0;
 let holdDone = false;
 let haatCooldown = 0;
 let horseHold = 0;
+let lastHarvested = -1;
 let warnedHorse = false;
 let wasRiding = false;
 let warnedSeed = false;
@@ -173,6 +174,7 @@ function interact(dt: number, now: number, moving: boolean): void {
   const plotIndex = plotAt(pos.x, pos.z);
   if (plotIndex !== currentPlot) {
     currentPlot = plotIndex;
+    lastHarvested = -1;
     holdTime = 0;
     holdDone = false;
     warnedSeed = false;
@@ -204,12 +206,13 @@ function interact(dt: number, now: number, moving: boolean): void {
       const r = plant(state, plotIndex, selectedSeed, now);
       if (r.ok) {
         record(playtest, 'plant', selectedSeed);
-        hud.float(`🌱${CROPS[selectedSeed].icon}`, up(at, 0.8), camera);
+        // A harvested plot replants at once; its harvest float already says enough.
+        if (plotIndex !== lastHarvested) hud.float(`🌱 ${CROPS[selectedSeed].icon}`, up(at, 1), camera);
       }
       if (!r.ok && selectedSeed !== 'wheat') {
         if (plant(state, plotIndex, 'wheat', now).ok) {
           record(playtest, 'plant', 'wheat');
-          hud.float('🌱🌾', up(at, 0.8), camera);
+          if (plotIndex !== lastHarvested) hud.float('🌱 🌾', up(at, 1), camera);
         }
         if (!warnedSeed) hud.toast(`Not enough coins for ${CROPS[selectedSeed].name}, planted wheat`);
         warnedSeed = true;
@@ -218,7 +221,8 @@ function interact(dt: number, now: number, moving: boolean): void {
       const crop = p.crop;
       harvest(state, plotIndex, now);
       record(playtest, 'harvest', crop);
-      hud.float(`+1 ${CROPS[crop].icon}`, up(at, 1.2), camera);
+      hud.float(`+1 ${CROPS[crop].icon}`, up(at, 1), camera);
+      lastHarvested = plotIndex;
       if (hintStage === 1) {
         hintStage = 2;
         hud.toast('Carry the wheat to the haat on the right →');
