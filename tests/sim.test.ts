@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { CROPS, KOLHU, LEVEL_XP, MAX_LEVEL } from '../src/game/data';
+import { CROPS, HORSE, KOLHU, LEVEL_XP, MAX_LEVEL } from '../src/game/data';
 import {
   buyPlot,
+  orderProgress,
+  basketCap,
+  basketCount,
+  sellSurplus,
+  hireHorse,
+  rideLeft,
   collectPress,
   dismissOrder,
   fulfill,
@@ -131,6 +137,7 @@ describe('closed loop', () => {
       collectPress(s, now);
       startPress(s, now);
       for (const o of [...s.orders]) fulfill(s, o.id, now);
+      sellSurplus(s);
       // Drop orders that wait too long so the haat keeps moving.
       if (s.orders.length === 3 && rng() < 0.01) dismissOrder(s, s.orders[0].id, now);
       s.plots.forEach((p, i) => {
@@ -155,5 +162,62 @@ describe('saves', () => {
     expect(restore(null, T0).coins).toBe(10);
     expect(restore({ version: 99 }, T0).coins).toBe(10);
     expect(restore({ version: 1, plots: [] }, T0).plots.length).toBe(16);
+  });
+});
+
+describe('order progress', () => {
+  it('shares one carried pile across orders, first order first', () => {
+    const s = newGame(0);
+    s.orders = [
+      { id: 1, who: 'Dadi', icon: '👵', lines: [{ item: 'wheat', qty: 2 }], coins: 10, xp: 8 },
+      { id: 2, who: 'Ravi', icon: '👦', lines: [{ item: 'wheat', qty: 3 }], coins: 15, xp: 10 },
+    ];
+    s.inventory.wheat = 3;
+    const [a, b] = orderProgress(s);
+    expect(a).toEqual({ have: [2], ready: true });
+    expect(b).toEqual({ have: [1], ready: false });
+  });
+});
+
+describe('horse ride', () => {
+  it('hires the ghoda from level 2 for coins, one ride at a time', () => {
+    const s = newGame(0);
+    s.coins = 100;
+    expect(hireHorse(s, 0).ok).toBe(false);
+    s.level = HORSE.unlockLevel;
+    expect(hireHorse(s, 0).ok).toBe(true);
+    expect(s.coins).toBe(100 - HORSE.cost);
+    expect(rideLeft(s, 1000)).toBe(HORSE.rideMs - 1000);
+    expect(hireHorse(s, 1000).ok).toBe(false);
+    expect(rideLeft(s, HORSE.rideMs + 1)).toBe(0);
+  });
+});
+
+describe('basket', () => {
+  it('stops harvesting when full and sells only unwanted goods', () => {
+    const s = newGame(0);
+    s.inventory.wheat = basketCap(s);
+    s.plots[0].crop = 'wheat';
+    s.plots[0].plantedAt = -1e6;
+    expect(harvest(s, 0, 0).ok).toBe(false);
+    // Dadi wants 2 wheat, so those stay; the rest can go.
+    const coins = s.coins;
+    const sold = sellSurplus(s);
+    expect(sold?.item).toBe('wheat');
+    expect(s.coins).toBe(coins + sold!.coins);
+    expect(sellSurplus(s)).toBeNull();
+    s.inventory.wheat = 2;
+    s.inventory.marigold = basketCap(s) - 2;
+    expect(sellSurplus(s)?.item).toBe('marigold');
+  });
+});
+
+describe('old saves', () => {
+  it('sells an overflowing basket down to the limit on load', () => {
+    const s = newGame(0);
+    s.inventory.wheat = 212;
+    const r = restore(JSON.parse(JSON.stringify(s)), 0);
+    expect(basketCount(r)).toBe(basketCap(r));
+    expect(r.coins).toBeGreaterThan(s.coins);
   });
 });

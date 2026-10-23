@@ -3,7 +3,9 @@
 import {
   CROPS,
   CropId,
+  BASKET_CAP,
   GRID_SIZE,
+  HORSE,
   ITEMS,
   ITEM_ORDER,
   ItemId,
@@ -14,6 +16,7 @@ import {
   ORDER_BONUS,
   ORDER_GAP_MS,
   START_COINS,
+  SURPLUS_RATE,
   START_PLOTS,
   TRADER,
   VILLAGERS,
@@ -50,6 +53,8 @@ export interface GameState {
   plotsBought: number;
   inventory: Record<ItemId, number>;
   kolhuStartedAt: number | null;
+  /** When the current horse ride ends; 0 when not riding. */
+  horseUntil: number;
   orders: Order[];
   nextOrderAt: number;
   nextOrderId: number;
@@ -77,6 +82,7 @@ export function newGame(now: number): GameState {
     plotsBought: 0,
     inventory: { wheat: 0, marigold: 0, sugarcane: 0, jaggery: 0 },
     kolhuStartedAt: null,
+    horseUntil: 0,
     // A first, easy order so a new player knows what to do.
     orders: [{ id: 1, who: 'Dadi', icon: '👵', lines: [{ item: 'wheat', qty: 2 }], coins: 10, xp: 8 }],
     nextOrderAt: now + ORDER_GAP_MS,
@@ -130,10 +136,43 @@ export function harvest(state: GameState, index: number, now: number): Result {
   const plot = state.plots[index];
   if (!plot || !plot.crop) return fail('Nothing to harvest');
   if (!isRipe(plot, now)) return fail('Not ready yet');
+  if (basketFull(state)) return fail('Basket full');
   state.inventory[plot.crop] += 1;
   plot.crop = null;
   plot.plantedAt = 0;
   return ok;
+}
+
+export function basketCount(state: GameState): number {
+  return ITEM_ORDER.reduce((n, id) => n + state.inventory[id], 0);
+}
+
+export function basketCap(state: GameState): number {
+  return BASKET_CAP[Math.min(state.level, BASKET_CAP.length) - 1];
+}
+
+export function basketFull(state: GameState): boolean {
+  return basketCount(state) >= basketCap(state);
+}
+
+/**
+ * With a full basket, sells one item that no waiting order needs, so the player is never stuck.
+ * Returns the item sold and its price, or null when everything carried is wanted.
+ */
+export function sellSurplus(state: GameState): { item: ItemId; coins: number } | null {
+  if (!basketFull(state)) return null;
+  const wanted: Record<string, number> = {};
+  for (const o of state.orders) for (const l of o.lines) wanted[l.item] = (wanted[l.item] ?? 0) + l.qty;
+  let best: ItemId | null = null;
+  for (const id of ITEM_ORDER) {
+    const spare = state.inventory[id] - (wanted[id] ?? 0);
+    if (spare > 0 && (!best || spare > state.inventory[best] - (wanted[best] ?? 0))) best = id;
+  }
+  if (!best) return null;
+  const coins = Math.max(1, Math.round(ITEMS[best].value * SURPLUS_RATE));
+  state.inventory[best] -= 1;
+  state.coins += coins;
+  return { item: best, coins };
 }
 
 export function nextPlotCost(state: GameState): number {
@@ -149,6 +188,19 @@ export function buyPlot(state: GameState, index: number): Result {
   state.coins -= cost;
   plot.unlocked = true;
   state.plotsBought += 1;
+  return ok;
+}
+
+export function rideLeft(state: GameState, now: number): number {
+  return Math.max(0, state.horseUntil - now);
+}
+
+export function hireHorse(state: GameState, now: number): Result {
+  if (state.level < HORSE.unlockLevel) return fail(`The ghoda is free from level ${HORSE.unlockLevel}`);
+  if (rideLeft(state, now) > 0) return fail('Already riding');
+  if (state.coins < HORSE.cost) return fail(`A ride costs ${HORSE.cost} coins`);
+  state.coins -= HORSE.cost;
+  state.horseUntil = now + HORSE.rideMs;
   return ok;
 }
 
@@ -184,6 +236,23 @@ export function collectPress(state: GameState, now: number): Result {
 
 export function canFulfill(state: GameState, order: Order): boolean {
   return order.lines.every((l) => state.inventory[l.item] >= l.qty);
+}
+
+export interface OrderProgress {
+  /** How many of each line's items are set aside for this order. */
+  have: number[];
+  ready: boolean;
+}
+
+/** Splits what you carry across the orders in turn, so two orders never count the same wheat. */
+export function orderProgress(state: GameState): OrderProgress[] {
+  const left = { ...state.inventory };
+  return state.orders.map((o) => {
+    const ready = o.lines.every((l) => left[l.item] >= l.qty);
+    const have = o.lines.map((l) => Math.min(left[l.item], l.qty));
+    if (ready) for (const l of o.lines) left[l.item] -= l.qty;
+    return { have, ready };
+  });
 }
 
 export interface FulfillResult {
@@ -266,10 +335,18 @@ export function restore(raw: unknown, now: number): GameState {
   if (!raw || typeof raw !== 'object' || (raw as GameState).version !== 1) return fresh;
   const saved = raw as GameState;
   if (!Array.isArray(saved.plots) || saved.plots.length !== fresh.plots.length) return fresh;
-  return {
+  const state: GameState = {
     ...fresh,
     ...saved,
     inventory: { ...fresh.inventory, ...saved.inventory },
     level: levelForXp(saved.xp ?? 0),
   };
+  // Saves from before the basket had a limit can hold hundreds of crops; sell the overflow as surplus.
+  while (basketCount(state) > basketCap(state)) {
+    const most = ITEM_ORDER.reduce((a, b) => (state.inventory[b] > state.inventory[a] ? b : a));
+    const extra = Math.min(state.inventory[most], basketCount(state) - basketCap(state));
+    state.inventory[most] -= extra;
+    state.coins += Math.round(extra * ITEMS[most].value * SURPLUS_RATE);
+  }
+  return state;
 }
