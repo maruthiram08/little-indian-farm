@@ -41,6 +41,7 @@ export class Hud {
   private basket = el('div', 'basket');
   private basketKey = '-';
   private goal = el('div', 'goal');
+  private goalTimer = 0;
   private toastNode = el('div', 'toast');
   private toastTimer = 0;
   private labels = new Map<string, Label>();
@@ -87,7 +88,9 @@ export class Hud {
       seeds.appendChild(b);
       this.seedButtons.set(id, b);
     }
-    bottom.append(this.goal, this.basket, seeds);
+    const dock = el('div', 'dock');
+    dock.append(seeds, this.basket);
+    bottom.append(this.goal, dock);
 
     this.root.append(this.labelLayer, top, orders, bottom, this.toastNode);
   }
@@ -101,7 +104,13 @@ export class Hud {
   }
 
   render(state: GameState, selectedSeed: CropId, goal: string, rideLeftMs: number): void {
-    setRich(this.goal, goal);
+    if (this.goal.dataset.text !== goal) {
+      // The hint shows when it changes, then fades so the field stays clear.
+      setRich(this.goal, goal);
+      this.goal.classList.toggle('show', goal !== '');
+      window.clearTimeout(this.goalTimer);
+      this.goalTimer = window.setTimeout(() => this.goal.classList.remove('show'), 6000);
+    }
     const progress = orderProgress(state);
     const coins = String(state.coins);
     if (this.coins.textContent !== coins) this.coins.textContent = coins;
@@ -174,7 +183,6 @@ export class Hud {
       this.basketKey = basketKey;
       this.basket.replaceChildren();
       this.basket.classList.toggle('empty', carried.length === 0);
-      if (!carried.length) this.basket.textContent = 'Basket empty';
       for (const id of carried) {
         const slot = el('span', 'slot');
         slot.append(icon(id), el('span', 'slot-num', String(state.inventory[id])));
